@@ -1,76 +1,87 @@
-name: Build OpenWrt Docker Image
+name: Build ImmortalWrt Docker Image
 
 on:
-workflow_dispatch:
+  workflow_dispatch:
 
 env:
-REPO_URL: https://github.com/immortalwrt/immortalwrt
-REPO_BRANCH: v24.10
-IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/openwrt
+  REPO_URL: https://github.com/immortalwrt/immortalwrt
+  REPO_BRANCH: openwrt-24.10
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/openwrt
 
 jobs:
-build:
-runs-on: ubuntu-22.04
+  build:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, arm64]
 
-```
-strategy:
-  matrix:
-    arch: [x86_64, arm64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-steps:
-- uses: actions/checkout@v4
+      - name: Initialization environment
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential clang flex bison g++ gawk \
+          gcc-multilib g++-multilib gettext git libncurses-dev \
+          libssl-dev python3-distutils rsync unzip zlib1g-dev file wget \
+          qemu-user-static ccache
 
-- name: Install deps
-  run: |
-    sudo apt update
-    sudo apt install -y build-essential clang flex bison g++ gawk \
-    gcc-multilib g++-multilib gettext git libncurses-dev \
-    libssl-dev python3-distutils rsync unzip zlib1g-dev file wget \
-    qemu-user-static
+      - name: Clone source
+        run: |
+          git clone $REPO_URL -b $REPO_BRANCH openwrt
 
-- name: Clone source
-  run: |
-    git clone $REPO_URL -b $REPO_BRANCH openwrt
+      - name: Cache
+        uses: actions/cache@v4
+        with:
+          path: openwrt/.ccache
+          key: ${{ matrix.arch }}-ccache-${{ github.run_id }}
+          restore-keys: |
+            ${{ matrix.arch }}-ccache-
 
-- name: Load config
-  run: |
-    if [ "${{ matrix.arch }}" = "x86_64" ]; then
-      cp configs/x86.config openwrt/.config
-    else
-      cp configs/arm64.config openwrt/.config
-    fi
+      - name: Load custom configuration
+        run: |
+          [ -e config/${{ matrix.arch == 'x86_64' && 'x86' || 'arm64' }}.config ] && cp config/${{ matrix.arch == 'x86_64' && 'x86' || 'arm64' }}.config openwrt/.config
+          mkdir -p openwrt/files
+          cp -r files/* openwrt/files/
 
-- name: Custom
-  run: |
-    chmod +x diy.sh
-    cd openwrt
-    ../diy.sh
+      - name: DIY script
+        run: |
+          chmod +x diy.sh
+          cd openwrt
+          ../diy.sh
 
-- name: Feeds
-  run: |
-    cd openwrt
-    ./scripts/feeds update -a
-    ./scripts/feeds install -a
+      - name: Build rootfs
+        run: |
+          cd openwrt
+          make defconfig
+          make -j$(nproc) || make -j1 V=s
 
-- name: Build rootfs
-  run: |
-    cd openwrt
-    make defconfig
-    make -j$(nproc)
+      - name: Slim and Prepare Docker build
+        run: |
+          # Create a temp dir to extract and slim
+          mkdir rootfs
+          tar -C rootfs -xzf openwrt/bin/targets/*/*/*rootfs.tar.gz
+          # Remove kernel modules and unnecessary files to save space
+          rm -rf rootfs/lib/modules/*
+          rm -rf rootfs/usr/lib/modules/*
+          # Re-pack
+          tar -C rootfs -czf openwrt-rootfs.tar.gz .
 
-- name: Prepare rootfs
-  run: |
-    mkdir rootfs
-    tar -xf openwrt/bin/targets/*/*/*rootfs.tar.gz -C rootfs
+      - name: Build Docker image
+        run: |
+          docker build -t $IMAGE_NAME:${{ matrix.arch }} .
 
-- name: Build Docker image
-  run: |
-    docker build -t $IMAGE_NAME:${{ matrix.arch }} .
+      - name: Login to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-- name: Login GHCR
-  run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
-- name: Push
-  run: |
-    docker push $IMAGE_NAME:${{ matrix.arch }}
-```
+      - name: Push Docker image
+        if: github.event_name != 'pull_request'
+        run: |
+          docker push $IMAGE_NAME:${{ matrix.arch }}

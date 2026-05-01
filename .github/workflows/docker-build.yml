@@ -11,6 +11,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-22.04
+
     strategy:
       fail-fast: false
       matrix:
@@ -20,59 +21,102 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Initialization environment
+      # =========================
+      # Build environment
+      # =========================
+      - name: Install dependencies
         run: |
           sudo apt update
           sudo apt install -y build-essential clang flex bison g++ gawk \
-          gcc-multilib g++-multilib gettext git libncurses-dev \
-          libssl-dev python3-distutils rsync unzip zlib1g-dev file wget \
-          qemu-user-static ccache
+            gcc-multilib g++-multilib gettext git libncurses-dev \
+            libssl-dev python3-distutils rsync unzip zlib1g-dev file wget \
+            ccache
 
+      # =========================
+      # Clone OpenWrt source
+      # =========================
       - name: Clone source
         run: |
           git clone $REPO_URL -b $REPO_BRANCH openwrt
 
-      - name: Cache
+      # =========================
+      # Cache ccache (FIXED)
+      # =========================
+      - name: Cache ccache
         uses: actions/cache@v4
         with:
           path: openwrt/.ccache
-          key: ${{ matrix.arch }}-ccache-${{ github.run_id }}
+          key: ${{ matrix.arch }}-ccache-${{ github.ref }}
           restore-keys: |
             ${{ matrix.arch }}-ccache-
 
-      - name: Load custom configuration
+      # =========================
+      # Load config
+      # =========================
+      - name: Load custom config
         run: |
-          [ -e config/${{ matrix.arch == 'x86_64' && 'x86' || 'arm64' }}.config ] && cp config/${{ matrix.arch == 'x86_64' && 'x86' || 'arm64' }}.config openwrt/.config
-          mkdir -p openwrt/files
-          cp -r files/* openwrt/files/
+          ARCH_CFG=${{ matrix.arch }}
+          if [ "$ARCH_CFG" = "x86_64" ]; then
+            CFG="x86"
+          else
+            CFG="arm64"
+          fi
 
+          if [ -f "config/${CFG}.config" ]; then
+            cp config/${CFG}.config openwrt/.config
+          fi
+
+          mkdir -p openwrt/files
+          [ -d files ] && cp -r files/* openwrt/files/ || true
+
+      # =========================
+      # DIY script
+      # =========================
       - name: DIY script
         run: |
           chmod +x diy.sh
           cd openwrt
           ../diy.sh
 
-      - name: Build rootfs
+      # =========================
+      # Build OpenWrt
+      # =========================
+      - name: Build OpenWrt
         run: |
           cd openwrt
           make defconfig
           make -j$(nproc) || make -j1 V=s
 
-      - name: Slim and Prepare Docker build
+      # =========================
+      # Extract rootfs safely
+      # =========================
+      - name: Prepare rootfs
         run: |
-          # Create a temp dir to extract and slim
+          ROOTFS=$(find openwrt/bin/targets -name "*rootfs.tar.gz" | head -n 1)
+
+          echo "Found rootfs: $ROOTFS"
+
           mkdir -p rootfs
-          tar -C rootfs -xzf openwrt/bin/targets/*/*/*rootfs.tar.gz
-          # Remove kernel modules and unnecessary files to save space
-          rm -rf rootfs/lib/modules/*
-          rm -rf rootfs/usr/lib/modules/*
-          # Re-pack
-          tar -C rootfs -czf openwrt-rootfs.tar.gz .
+          tar -xzf "$ROOTFS" -C rootfs
 
-      - name: Build Docker image
-        run: |
-          docker build --platform linux/${{ matrix.arch == 'x86_64' && 'amd64' || 'arm64' }} -t $IMAGE_NAME:${{ matrix.arch }} .
+          # optional cleanup
+          rm -rf rootfs/lib/modules || true
+          rm -rf rootfs/usr/lib/modules || true
 
+          tar -czf openwrt-rootfs.tar.gz -C rootfs .
+
+      # =========================
+      # Docker buildx setup (IMPORTANT)
+      # =========================
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # =========================
+      # Login Docker Hub
+      # =========================
       - name: Login to Docker Hub
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
@@ -80,7 +124,13 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Push Docker image
-        if: github.event_name != 'pull_request'
-        run: |
-          docker push $IMAGE_NAME:${{ matrix.arch }}
+      # =========================
+      # Build & Push Docker image
+      # =========================
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          platforms: ${{ matrix.arch == 'x86_64' && 'linux/amd64' || 'linux/arm64' }}
+          tags: ${{ env.IMAGE_NAME }}:${{ matrix.arch }}

@@ -71,7 +71,7 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build -t $IMAGE_NAME:${{ matrix.arch }} .
+          docker build --platform linux/${{ matrix.arch == 'x86_64' && 'amd64' || 'arm64' }} -t $IMAGE_NAME:${{ matrix.arch }} .
 
       - name: Login to Docker Hub
         if: github.event_name != 'pull_request'

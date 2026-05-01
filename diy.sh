@@ -1,16 +1,10 @@
 #!/bin/bash
 
 # 1. Update feeds first to make sure indexes are available
-./scripts/feeds update -a -f
-
-# 2. Add Argon Theme (Switch to master branch for 24.10 compatibility)
-rm -rf package/luci-theme-argon
-rm -rf package/luci-app-argon-config
+./scripts/feeds update -a
 
 # 3. Install all feeds
-./scripts/feeds install luci
-./scripts/feeds install base
-./scripts/feeds install luci-app-passwall
+./scripts/feeds install -a
 
 # 4. Modify default settings
 # Change default IP

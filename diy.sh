@@ -1,18 +1,15 @@
 #!/bin/bash
 
-# 1. Add helloworld feed for SSR Plus
-echo 'src-git helloworld https://github.com/fw876/helloworld.git' >> feeds.conf.default
-
-# 2. Update feeds first to make sure indexes are available
+# 1. Update feeds first to make sure indexes are available
 ./scripts/feeds update -a
 
-# 3. Add Argon Theme (Switch to master branch for 24.10 compatibility)
+# 2. Add Argon Theme (Switch to master branch for 24.10 compatibility)
 rm -rf package/luci-theme-argon
 rm -rf package/luci-app-argon-config
 git clone https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
 git clone https://github.com/jerrykuku/luci-app-argon-config.git package/luci-app-argon-config
 
-# 4. Install all feeds
+# 3. Install all feeds
 ./scripts/feeds install -a
 
 # 4. Modify default settings

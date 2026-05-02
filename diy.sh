@@ -3,6 +3,12 @@
 # 1. Update feeds first to make sure indexes are available
 ./scripts/feeds update -a
 
+# 2. Add Argon Theme
+rm -rf package/luci-theme-argon
+rm -rf package/luci-app-argon-config
+git clone https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
+git clone https://github.com/jerrykuku/luci-app-argon-config.git package/luci-app-argon-config
+
 # 3. Install all feeds
 ./scripts/feeds install -a
 

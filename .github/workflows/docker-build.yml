@@ -51,6 +51,15 @@ jobs:
             ${{ matrix.arch }}-ccache-
 
       # =========================
+      # DIY script
+      # =========================
+      - name: DIY script
+        run: |
+          chmod +x diy.sh
+          cd openwrt
+          ../diy.sh
+
+      # =========================
       # Load config
       # =========================
       - name: Load custom config
@@ -68,15 +77,6 @@ jobs:
 
           mkdir -p openwrt/files
           [ -d files ] && cp -r files/* openwrt/files/ || true
-
-      # =========================
-      # DIY script
-      # =========================
-      - name: DIY script
-        run: |
-          chmod +x diy.sh
-          cd openwrt
-          ../diy.sh
 
       # =========================
       # Build OpenWrt

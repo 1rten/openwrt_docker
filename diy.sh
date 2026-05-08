@@ -27,8 +27,13 @@ uci set dhcp.@dnsmasq[0].resolvfile='/tmp/resolv.conf.auto'
 uci set dhcp.@dnsmasq[0].noresolv='1'
 # Set a reliable upstream DNS
 uci add_list dhcp.@dnsmasq[0].server='223.5.5.5'
-uci add_list dhcp.@dnsmasq[0].server='114.114.114.114'
+uci add_list dhcp.@dnsmasq[0].server='114.114.115.115'
 uci commit dhcp
+
+# Force system to use local dnsmasq by bind mounting
+echo "nameserver 127.0.0.1" > /tmp/resolv.conf
+mount --bind /tmp/resolv.conf /etc/resolv.conf
+
 /etc/init.d/dnsmasq restart
 exit 0
 EOF

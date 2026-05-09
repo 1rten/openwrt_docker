@@ -17,24 +17,3 @@ sed -i 's/192.168.1.1/192.168.50.199/g' package/base-files/files/bin/config_gene
 sed -i 's/ImmortalWrt/OpenWrt-Docker/g' package/base-files/files/bin/config_generate
 # Change default timezone
 sed -i "s/'UTC'/'CST-8'\n\t\tset system.@system[-1].zonename='Asia\/Shanghai'/g" package/base-files/files/bin/config_generate
-
-# Fix DNS resolution for Docker environment
-mkdir -p files/etc/uci-defaults
-cat << "EOF" > files/etc/uci-defaults/99-fix-dns
-#!/bin/sh
-# Ignore Docker's /etc/resolv.conf
-uci set dhcp.@dnsmasq[0].resolvfile='/tmp/resolv.conf.auto'
-uci set dhcp.@dnsmasq[0].noresolv='1'
-# Set a reliable upstream DNS
-uci add_list dhcp.@dnsmasq[0].server='223.5.5.5'
-uci add_list dhcp.@dnsmasq[0].server='114.114.115.115'
-uci commit dhcp
-
-# Force system to use local dnsmasq by bind mounting
-echo "nameserver 127.0.0.1" > /tmp/resolv.conf
-mount --bind /tmp/resolv.conf /etc/resolv.conf
-
-/etc/init.d/dnsmasq restart
-exit 0
-EOF
-chmod +x files/etc/uci-defaults/99-fix-dns

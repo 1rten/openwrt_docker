@@ -1,0 +1,14 @@
+#!/bin/sh
+
+# Disable DHCP server on LAN (Docker containers should not act as DHCP servers)
+# This prevents the "bad dhcp-range" error that causes dnsmasq to crash.
+uci set dhcp.lan.ignore='1'
+
+# DNS settings: Use local dnsmasq and upstream public DNS
+uci set dhcp.@dnsmasq[0].resolvfile='/tmp/resolv.conf.auto'
+uci set dhcp.@dnsmasq[0].noresolv='1'
+uci add_list dhcp.@dnsmasq[0].server='223.5.5.5'
+uci add_list dhcp.@dnsmasq[0].server='114.114.115.115'
+
+uci commit dhcp
+exit 0
